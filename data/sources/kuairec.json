@@ -1,0 +1,77 @@
+{
+  "dataset": "KuaiRec Dataset with Raw Features",
+  "record_url": "https://zenodo.org/records/18164998",
+  "repository_url": "https://github.com/chongminggao/KuaiRec",
+  "publication_date": "2026-01-06",
+  "files": [
+    {
+      "name": "KuaiRec.zip",
+      "url": "https://zenodo.org/api/records/18164998/files/KuaiRec.zip/content",
+      "size": 431964858,
+      "md5": "261550d472c48eff4990fb13c0e5bcf7",
+      "members": [
+        {
+          "name": "KuaiRec 2.0/LICENSE",
+          "size": 20138,
+          "md5": "b4209c560523c5be0a5501e9d247cd18"
+        },
+        {
+          "name": "KuaiRec 2.0/data/big_matrix.csv",
+          "size": 1083521226,
+          "md5": "080475f93f60916336ad6b80f102d2cc"
+        },
+        {
+          "name": "KuaiRec 2.0/data/item_categories.csv",
+          "size": 113130,
+          "md5": "c53dbd1f0bdb4b352763025e86833a37"
+        },
+        {
+          "name": "KuaiRec 2.0/data/item_daily_features.csv",
+          "size": 85855213,
+          "md5": "59461a0ce726eeb82e88321334a85284"
+        },
+        {
+          "name": "KuaiRec 2.0/data/kuairec_caption_category.csv",
+          "size": 1964578,
+          "md5": "31bc38cdccdf75a71df137779035f8cb"
+        },
+        {
+          "name": "KuaiRec 2.0/data/small_matrix.csv",
+          "size": 406155844,
+          "md5": "5116f93564e0c645cf1159b925f51a12"
+        },
+        {
+          "name": "KuaiRec 2.0/data/social_network.csv",
+          "size": 6910,
+          "md5": "d981c7deb29f51d8c7408e61b2b0a248"
+        },
+        {
+          "name": "KuaiRec 2.0/data/user_features.csv",
+          "size": 744174,
+          "md5": "33b5d7ae19378fb7c68c2238eed7720c"
+        }
+      ]
+    },
+    {
+      "name": "kuairec_caption_category.csv",
+      "url": "https://zenodo.org/api/records/18164998/files/kuairec_caption_category.csv/content",
+      "size": 1964578,
+      "md5": "31bc38cdccdf75a71df137779035f8cb",
+      "directory": "KuaiRec 2.0/data"
+    },
+    {
+      "name": "user_features_raw.csv",
+      "url": "https://zenodo.org/api/records/18164998/files/user_features_raw.csv/content",
+      "size": 1541558,
+      "md5": "3969b8120035e7ced36d56926a7cbd24",
+      "directory": "supplemental"
+    },
+    {
+      "name": "video_raw_categories_multi.csv",
+      "url": "https://zenodo.org/api/records/18164998/files/video_raw_categories_multi.csv/content",
+      "size": 1724451,
+      "md5": "d05eea147135d2cdf7759fba5c0d70d4",
+      "directory": "supplemental"
+    }
+  ]
+}
