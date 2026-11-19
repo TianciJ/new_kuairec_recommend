@@ -64,6 +64,7 @@ class ItemCFRecall:
         if block_size <= 0:
             raise ValueError("block_size 必须大于 0")
         self._fitted = False
+        cutoff = self.cutoff.timestamp()
         seen_parts, positive_parts = [], []
         columns = ["user_id", "video_id", "timestamp", "play_duration", "video_duration"]
         for chunk in pd.read_csv(
@@ -74,7 +75,7 @@ class ItemCFRecall:
         ):
             if not np.isfinite(chunk["timestamp"]).all():
                 raise ValueError("训练数据包含无效 timestamp")
-            chunk = chunk.loc[chunk["timestamp"] < self.cutoff.timestamp()]
+            chunk = chunk.loc[chunk["timestamp"] < cutoff]
             if chunk.empty:
                 continue
             if (chunk[["user_id", "video_id"]] < 0).any().any():
@@ -121,11 +122,11 @@ class ItemCFRecall:
         indices, values, indptr = [], [], [0]
         for start in range(0, shape[1], block_size):
             stop = min(start + block_size, shape[1])
-            block = (item_vectors[start:stop] @ normalized).tocsr()
+            block = item_vectors[start:stop] @ normalized
             for local_row in range(stop - start):
                 left, right = block.indptr[local_row:local_row + 2]
                 ids, scores = block.indices[left:right], block.data[left:right]
-                valid = (ids != start + local_row) & (scores > 0)
+                valid = ids != start + local_row
                 ids, scores = ids[valid], scores[valid]
                 chosen = _top_indices(ids, scores, self.similarity_top_k)
                 indices.append(ids[chosen])
@@ -155,14 +156,14 @@ class ItemCFRecall:
             raise ValueError("user_id 和 top_k 不能为负数")
         if top_k == 0 or user_id >= self.positive.shape[0]:
             return []
-        scores = (self.positive.getrow(user_id) @ self.similarity).tocsr()
+        scores = self.positive.getrow(user_id) @ self.similarity
         ids, values = scores.indices, scores.data
         blocked = set(self.seen.getrow(user_id).indices) | set(exclude_ids)
         allowed = None if candidate_ids is None else set(candidate_ids)
         valid = np.fromiter(
             (i not in blocked and (allowed is None or i in allowed) for i in ids),
             dtype=bool, count=len(ids),
-        ) & (values > 0)
+        )
         ids, values = ids[valid], values[valid]
         chosen = _top_indices(ids, values, top_k)
         return [(int(ids[i]), float(values[i])) for i in chosen]

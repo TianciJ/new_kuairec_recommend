@@ -66,8 +66,6 @@ def seed_all(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
     # 固定种子提升可复现性，但不承诺跨设备/版本逐位一致。
     torch.backends.cudnn.benchmark = False
 
@@ -96,8 +94,6 @@ def sample_negatives(targets, num_items, count, generator=None):
     不排除用户其他历史物品，以保持 alpha=k/(N-1) 的采样空间定义。
     采样负例不是用户明确的负反馈。
     """
-    if num_items < 2:
-        raise ValueError("至少需要两个训练正反馈视频")
     sampled = torch.randint(1, num_items, (*targets.shape, count),
                             device=targets.device, generator=generator)
     return sampled + (sampled >= targets.unsqueeze(-1)).long()
@@ -159,16 +155,17 @@ class SequenceModel(nn.Module):
 
 def read_interactions(path, cutoff):
     columns = ["user_id", "video_id", "timestamp", "play_duration", "video_duration"]
+    cutoff = local_time(cutoff).timestamp()
     parts = []
     for chunk in pd.read_csv(path, usecols=columns, chunksize=500_000):
-        if chunk[columns].isna().any().any() or not np.isfinite(chunk[columns].to_numpy()).all():
+        if not np.isfinite(chunk[columns].to_numpy()).all():
             raise ValueError("交互表包含缺失/非有限数值")
         ids = chunk[["user_id", "video_id"]].to_numpy()
         if (ids < 0).any() or (ids != np.floor(ids)).any():
             raise ValueError("用户/视频 ID 必须是非负整数")
         if (chunk.video_duration <= 0).any() or (chunk.play_duration < 0).any():
             raise ValueError("视频时长必须为正，播放时长必须非负")
-        chunk = chunk.loc[chunk.timestamp < local_time(cutoff).timestamp()].copy()
+        chunk = chunk.loc[chunk.timestamp < cutoff].copy()
         if not chunk.empty:
             chunk[["user_id", "video_id"]] = chunk[["user_id", "video_id"]].astype("int64")
             parts.append(chunk)
@@ -193,7 +190,7 @@ class PreparedData:
             window = np.zeros(config.max_length + 1, dtype=np.int64)
             tail = sequence[-len(window):]
             window[-len(tail):] = tail
-            self.sequences[int(user)] = window[1:].copy()
+            self.sequences[int(user)] = window[1:]
             if len(sequence) >= 2:
                 self.train_windows.append(window)
         if not self.train_windows:
@@ -203,7 +200,6 @@ class PreparedData:
         item_ids = frame.video_id.to_numpy(dtype=np.int64)
         self.seen = sparse.csr_matrix((np.ones(len(frame), dtype=bool), (user_ids, item_ids)),
                                      shape=(int(user_ids.max()) + 1, int(item_ids.max()) + 1))
-        self.seen.sort_indices()
 
 
 class GSASRecRecall:
@@ -228,7 +224,8 @@ class GSASRecRecall:
         for start in range(0, len(windows), cfg.batch_size):
             window = torch.as_tensor(windows[start:start + cfg.batch_size], device=self.device)
             inputs, targets = window[:, :-1], window[:, 1:]
-            mask = (inputs != 0) & (targets != 0)
+            # 窗口只在左侧填充，非零输入的下一项必然非零。
+            mask = inputs != 0
             hidden = self.model(inputs)[mask]
             targets = targets[mask]
             negatives = sample_negatives(targets, len(self.video_ids), cfg.negatives, rng)
@@ -315,11 +312,10 @@ class GSASRecRecall:
     def recommend_batch(self, user_ids, top_k=200, *, candidate_ids=None, exclude_ids=()):
         if self.model is None:
             raise RuntimeError("请先 fit 或 load")
-        users = [int(u) for u in user_ids]
-        if top_k < 0 or any(u < 0 for u in users):
+        result = {int(u): [] for u in user_ids}
+        if top_k < 0 or any(u < 0 for u in result):
             raise ValueError("user_id 和 top_k 必须非负")
-        result = {u: [] for u in users}
-        active = [u for u in dict.fromkeys(users) if u in self.sequences]
+        active = [u for u in result if u in self.sequences]
         if not active or not top_k:
             return result
         allowed = None if candidate_ids is None else set(candidate_ids)
@@ -333,8 +329,7 @@ class GSASRecRecall:
             if not np.isfinite(scores).all():
                 raise RuntimeError("召回分数包含非有限值")
             for user, row in zip(batch_users, scores):
-                seen = set(self.seen.getrow(user).indices.tolist()) if user < self.seen.shape[0] else set()
-                blocked = seen | excluded
+                blocked = set(self.seen.getrow(user).indices) | excluded
                 valid = np.fromiter((v not in blocked and (allowed is None or v in allowed)
                                      for v in self.video_ids), dtype=bool, count=len(self.video_ids))
                 ids, values = self.video_ids[valid], row[valid]
@@ -370,7 +365,7 @@ class GSASRecRecall:
     def evaluate(self, test_path, top_k=200):
         # 仅显式调用时读取 test；固定训练截止时刻的历史，不滚动添加测试行为。
         frame = pd.read_csv(test_path, usecols=["user_id", "video_id", "timestamp", "play_duration", "video_duration"])
-        if frame.empty or frame.isna().any().any() or not np.isfinite(frame.to_numpy()).all():
+        if frame.empty or not np.isfinite(frame.to_numpy()).all():
             raise ValueError("测试数据为空或包含缺失/非有限值")
         if frame.timestamp.min() < local_time(self.config.cutoff).timestamp():
             raise ValueError("测试集包含训练截止时间之前的交互")
@@ -384,7 +379,7 @@ class GSASRecRecall:
         users = np.array(sorted(self.sequences), dtype=np.int64)
         payload = {"kind": "gsasrec_recall_v1", "config": asdict(self.config),
                    "weights": {k: v.detach().cpu() for k, v in self.model.state_dict().items()},
-                   "video_ids": torch.from_numpy(self.video_ids.copy()), "users": torch.from_numpy(users),
+                   "video_ids": torch.from_numpy(self.video_ids), "users": torch.from_numpy(users),
                    "sequences": torch.from_numpy(np.stack([self.sequences[u] for u in users])),
                    "seen_indices": torch.from_numpy(self.seen.indices.astype(np.int64)),
                    "seen_indptr": torch.from_numpy(self.seen.indptr.astype(np.int64)),

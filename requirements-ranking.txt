@@ -1,0 +1,6 @@
+# 现有 numpy / pandas / scipy / torch 继续沿用 recommend 环境。
+# Windows GPU 的原生库安装见 scripts/setup_lightgbm_gpu.ps1。
+lightgbm==4.6.0
+scikit-learn>=1.6,<2
+# DIN / RankMixer 使用原生 PyTorch；本机继续使用 recommend 环境的 CUDA 版本。
+torch>=2.6,<3

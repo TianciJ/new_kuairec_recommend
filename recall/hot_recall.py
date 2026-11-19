@@ -50,7 +50,7 @@ class HotRecall:
         daily = daily.loc[(daily["date"] >= start_day) & (daily["date"] < end_day)]
         if daily.duplicated(["video_id", "date"]).any():
             raise ValueError("热度窗口内有重复的视频-日期记录，不能重复累加")
-        if daily["video_id"].isna().any() or (daily["video_id"] < 0).any():
+        if (daily["video_id"] < 0).any():
             raise ValueError("video_id 必须为非负整数")
         counts = daily["play_user_num"].to_numpy()
         if not np.isfinite(counts).all() or (counts < 0).any():
@@ -64,13 +64,14 @@ class HotRecall:
 
         # 所有观看都进入排除集合，不以是否完播区分，重复观看只占一个位置。
         parts = []
+        cutoff = self.cutoff.timestamp()
         for chunk in pd.read_csv(
             train_path, usecols=["user_id", "video_id", "timestamp"],
             dtype={"user_id": "int64", "video_id": "int64", "timestamp": "float64"}, chunksize=chunksize,
         ):
             if not np.isfinite(chunk["timestamp"]).all():
                 raise ValueError("训练数据包含无效 timestamp")
-            chunk = chunk.loc[chunk["timestamp"] < self.cutoff.timestamp()]
+            chunk = chunk.loc[chunk["timestamp"] < cutoff]
             if (chunk[["user_id", "video_id"]] < 0).any().any():
                 raise ValueError("用户和视频 ID 必须为非负整数")
             if not chunk.empty:
@@ -81,7 +82,6 @@ class HotRecall:
                 (np.ones(len(pairs), dtype=bool), (pairs[:, 0], pairs[:, 1])),
                 shape=(int(pairs[:, 0].max()) + 1, int(pairs[:, 1].max()) + 1),
             )
-            self.seen.sort_indices()
         else:
             self.seen = sparse.csr_matrix((0, 0), dtype=bool)
         self._fitted = True
